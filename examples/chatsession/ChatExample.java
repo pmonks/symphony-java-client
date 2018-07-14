@@ -57,6 +57,7 @@ import java.util.Set;
  * -Duser.call.home=frank.tarsillo@markit.com
  * -Duser.cert.password=password
  * -Duser.cert.file=bot.user2.p12
+ * -Duser.email=bot.user2@domain.com
  * -Dpod.url=https://(pod host)/pod
  * -Dagent.url=https://(agent server host)/agent
  * -Dreceiver.email=bot.user2@markit.com or bot user email
@@ -90,7 +91,7 @@ public class ChatExample implements ChatListener, ChatServiceListener {
 
         try {
 
-            SymphonyClientConfig symphonyClientConfig = new SymphonyClientConfig();
+            SymphonyClientConfig symphonyClientConfig = new SymphonyClientConfig(true);
 
             //Create an initialized client
             symClient = SymphonyClientFactory.getClient(
@@ -102,10 +103,9 @@ public class ChatExample implements ChatListener, ChatServiceListener {
 
             //A message to send when the BOT comes online.
             SymMessage aMessage = new SymMessage();
-            aMessage.setFormat(SymMessage.Format.MESSAGEML);
 
             //V4 will wrap the text in a PresentationMl div.
-            aMessage.setMessageText(ApiVersion.V4,"Hello master, I'm alive again....");
+            aMessage.setMessageText("Hello master, I'm alive again....");
 
 
             //Creates a Chat session with that will receive the online message.
@@ -146,12 +146,11 @@ public class ChatExample implements ChatListener, ChatServiceListener {
         if (message == null)
             return;
 
-        logger.debug("TS: {}\nFrom ID: {}\nSymMessage: {}\nSymMessage Type: {}\nSymMessage Format: {}",
+        logger.debug("TS: {}\nFrom ID: {}\nSymMessage: {}\nSymMessage Type: {}",
                 message.getTimestamp(),
                 message.getFromUserId(),
                 message.getMessage(),
-                message.getMessageType(),
-                message.getFormat().toString());
+                message.getMessageType());
 
         Chat chat = symClient.getChatService().getChatByStream(message.getStreamId());
 
@@ -168,7 +167,7 @@ public class ChatExample implements ChatListener, ChatServiceListener {
 
         chat.addListener(this);
 
-        logger.debug("New chat session detected on stream {} with {}", chat.getStream().getId(), remoteUsersString(chat.getRemoteUsers()));
+        logger.debug("New chat session detected on stream {} with {}", chat.getStream().getStreamId(), remoteUsersString(chat.getRemoteUsers()));
 
 
     }

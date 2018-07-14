@@ -31,6 +31,7 @@ import org.symphonyoss.client.exceptions.MessagesException;
 import org.symphonyoss.client.exceptions.StreamsException;
 import org.symphonyoss.client.model.Chat;
 import org.symphonyoss.symphony.clients.model.SymMessage;
+import org.symphonyoss.symphony.clients.model.SymStream;
 import org.symphonyoss.symphony.pod.model.Stream;
 import org.symphonyoss.symphony.pod.model.UserIdList;
 
@@ -44,10 +45,9 @@ public class Messenger {
     private static final Logger logger = LoggerFactory.getLogger(Messenger.class);
 
     @SuppressWarnings("unused")
-    public static void sendMessage(String message, SymMessage.Format type, Long userID, SymphonyClient symClient) {
+    public static void sendMessage(String message,  Long userID, SymphonyClient symClient) {
         SymMessage userMessage = new SymMessage();
-        userMessage.setFormat(type);
-        userMessage.setMessage(message);
+        userMessage.setMessageText(message);
 
         UserIdList list = new UserIdList();
         list.add(userID);
@@ -62,10 +62,9 @@ public class Messenger {
     }
 
     @SuppressWarnings("unused")
-    public static void sendMessage(String message, SymMessage.Format type, String email, SymphonyClient symClient) {
+    public static void sendMessage(String message, String email, SymphonyClient symClient) {
         SymMessage userMessage = new SymMessage();
-        userMessage.setFormat(type);
-        userMessage.setMessage(message);
+        userMessage.setMessageText(message);
 
         try {
             symClient.getMessageService().sendMessage(email, userMessage);
@@ -77,10 +76,9 @@ public class Messenger {
         }
     }
 
-    public static void sendMessage(String message, SymMessage.Format type, SymMessage refMes, SymphonyClient symClient) {
+    public static void sendMessage(String message, SymMessage refMes, SymphonyClient symClient) {
         SymMessage userMessage = new SymMessage();
-        userMessage.setFormat(type);
-        userMessage.setMessage(message);
+        userMessage.setMessageText(message);
 
         Stream stream = new Stream();
         stream.setId(refMes.getStreamId());
@@ -95,10 +93,9 @@ public class Messenger {
     }
 
     @SuppressWarnings("unused")
-    public static void sendMessage(String message, SymMessage.Format type, Chat chat, SymphonyClient symClient) {
+    public static void sendMessage(String message, Chat chat, SymphonyClient symClient) {
         SymMessage userMessage = new SymMessage();
-        userMessage.setFormat(type);
-        userMessage.setMessage(message);
+        userMessage.setMessageText(message);
 
         try {
             symClient.getMessageService().sendMessage(chat, userMessage);
@@ -114,13 +111,13 @@ public class Messenger {
     public static Chat getChat(Long userID, SymphonyClient symClient) {
         UserIdList list = new UserIdList();
         list.add(userID);
-        Stream stream;
+        SymStream stream;
         try {
 
             stream = symClient.getStreamsClient().getStream(list);
 
-            if( stream.getId() != null)
-                return symClient.getChatService().getChatByStream( stream.getId());
+            if( stream.getStreamId() != null)
+                return symClient.getChatService().getChatByStream( stream.getStreamId());
 
 
 

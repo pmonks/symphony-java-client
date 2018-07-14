@@ -61,6 +61,7 @@ import java.util.Set;
  * -Duser.call.home=frank.tarsillo@markit.com
  * -Duser.cert.password=password
  * -Duser.cert.file=bot.user2.p12
+ * -Duser.email=bot.user2@domain.com
  * -Dpod.url=https://(pod host)/pod
  * -Dagent.url=https://(agent server host)/agent
  * -Duser.email=bot.user2@markit.com or bot user email
@@ -95,7 +96,7 @@ public class ChatWithAutoAcceptConnectionsExample implements ChatListener, ChatS
 
             //Create an initialized client
             symClient = SymphonyClientFactory.getClient(
-                    SymphonyClientFactory.TYPE.BASIC,new SymphonyClientConfig());  //truststore password
+                    SymphonyClientFactory.TYPE.BASIC,new SymphonyClientConfig(true));  //truststore password
 
 
             //Will notify the bot of new Chat conversations.
@@ -110,7 +111,6 @@ public class ChatWithAutoAcceptConnectionsExample implements ChatListener, ChatS
 
             //A message to send when the BOT comes online.
             SymMessage aMessage = new SymMessage();
-            aMessage.setFormat(SymMessage.Format.MESSAGEML);
             aMessage.setMessage("<messageML>Hello <b>master</b>, I'm alive again....</messageML>");
 
 
@@ -180,7 +180,7 @@ public class ChatWithAutoAcceptConnectionsExample implements ChatListener, ChatS
 
         chat.addListener(this);
 
-        logger.debug("New chat session detected on stream {} with {}", chat.getStream().getId(), chat.getRemoteUsers());
+        logger.debug("New chat session detected on stream {} with {}", chat.getStream().getStreamId(), chat.getRemoteUsers());
     }
 
     @Override

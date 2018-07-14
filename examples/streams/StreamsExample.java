@@ -53,6 +53,7 @@ import java.util.Date;
  * -Duser.call.home=frank.tarsillo@markit.com
  * -Duser.cert.password=password
  * -Duser.cert.file=bot.user2.p12
+ * -Duser.email=bot.user2@domain.com
  * -Dpod.url=https://(pod host)/pod
  * -Dagent.url=https://(agent server host)/agent
  * -Dreceiver.email=bot.user2@markit.com or bot user email
@@ -91,7 +92,7 @@ public class StreamsExample {
 
             //Create an initialized client
             symClient = SymphonyClientFactory.getClient(
-                    SymphonyClientFactory.TYPE.V4,new SymphonyClientConfig());  //truststore password
+                    SymphonyClientFactory.TYPE.V4,new SymphonyClientConfig(true));  //truststore password
 
             SymAdminStreamFilter symAdminStreamFilter = new SymAdminStreamFilter();
 

@@ -29,6 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.symphonyoss.client.SymphonyClient;
 import org.symphonyoss.client.SymphonyClientConfig;
+import org.symphonyoss.client.SymphonyClientConfigID;
 import org.symphonyoss.client.SymphonyClientFactory;
 import org.symphonyoss.client.exceptions.MessagesException;
 import org.symphonyoss.client.exceptions.SymCacheException;
@@ -94,24 +95,25 @@ public class IgniteCacheExample {
 
         try {
 
+            SymphonyClientConfig symphonyClientConfig = new SymphonyClientConfig(true);
+
             //Create an initialized client
             symClient = SymphonyClientFactory.getClient(
-                    SymphonyClientFactory.TYPE.BASIC,new SymphonyClientConfig());  //truststore password
+                    SymphonyClientFactory.TYPE.BASIC,symphonyClientConfig);  //truststore password
 
 
             symClient.setCache(new IgniteUserCache(symClient));
 
             //A message to send when the BOT comes online.
             SymMessage aMessage = new SymMessage();
-            aMessage.setFormat(SymMessage.Format.TEXT);
-            aMessage.setMessage("Hello master, I'm alive again....");
+            aMessage.setMessageText("Hello master, I'm alive again....");
 
 
             //Creates a Chat session with that will receive the online message.
             Chat chat = new Chat();
             chat.setLocalUser(symClient.getLocalUser());
             Set<SymUser> remoteUsers = new HashSet<>();
-            remoteUsers.add(symClient.getUsersClient().getUserFromEmail(System.getProperty("user.call.home")));
+            remoteUsers.add(symClient.getUsersClient().getUserFromEmail(symphonyClientConfig.get(SymphonyClientConfigID.RECEIVER_EMAIL)));
             chat.setRemoteUsers(remoteUsers);
 
 

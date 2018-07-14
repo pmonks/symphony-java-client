@@ -1,5 +1,6 @@
 /*
  *
+ *
  * Copyright 2016 The Symphony Software Foundation
  *
  * Licensed to The Symphony Software Foundation (SSF) under one
@@ -18,6 +19,7 @@
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
+ *
  */
 
 package org.symphonyoss.client.services;
@@ -26,10 +28,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.symphonyoss.client.SymphonyClient;
 import org.symphonyoss.client.common.Constants;
-import org.symphonyoss.client.exceptions.DataFeedException;
+import org.symphonyoss.client.events.SymEvent;
 import org.symphonyoss.symphony.agent.model.Datafeed;
-import org.symphonyoss.symphony.agent.model.V2BaseMessage;
-
+import org.symphonyoss.symphony.clients.model.ApiVersion;
+import org.symphonyoss.symphony.clients.model.SymDatafeed;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -41,12 +43,12 @@ import java.util.concurrent.TimeUnit;
  *
  * @author Frank Tarsillo
  */
-class MessageFeedWorkerV2 implements Runnable {
+class DataFeedWorker implements Runnable {
 
     private final DataFeedListener dataFeedListener;
     private final SymphonyClient symClient;
-    private final Logger logger = LoggerFactory.getLogger(MessageFeedWorkerV2.class);
-    private Datafeed datafeed;
+    private final Logger logger = LoggerFactory.getLogger(DataFeedWorker.class);
+    private SymDatafeed datafeed;
     private boolean shutdown;
 
 
@@ -56,7 +58,7 @@ class MessageFeedWorkerV2 implements Runnable {
      * @param symClient        Identifies the BOT user and exposes client APIs
      * @param dataFeedListener Callback listener to publish new base messages on.
      */
-    public MessageFeedWorkerV2(SymphonyClient symClient, DataFeedListener dataFeedListener) {
+    public DataFeedWorker(SymphonyClient symClient, DataFeedListener dataFeedListener) {
         this.symClient = symClient;
         this.dataFeedListener = dataFeedListener;
 
@@ -70,11 +72,11 @@ class MessageFeedWorkerV2 implements Runnable {
         //noinspection InfiniteLoopStatement
         while (!shutdown) {
 
-            //Make sure its active
-            initDatafeed();
+                //Make sure its active
+                initDatafeed();
 
-            //Poll it
-            readDatafeed();
+                //Poll it
+                readDatafeed();
 
 
         }
@@ -92,13 +94,13 @@ class MessageFeedWorkerV2 implements Runnable {
             try {
                 logger.info("Creating datafeed with pod...");
 
-                datafeed = symClient.getDataFeedClient().createDatafeed();
+                datafeed = symClient.getDataFeedClient().createDatafeed(ApiVersion.V4);
+
                 break;
-            } 
-            catch( DataFeedException e) {
+            } catch (Exception e) {
 
         	/*
-        	 * TODO:
+             * TODO:
         	 * This seems wrong to me, if the result of this is 404
         	 * or some other non-transient error then there is hardly
         	 * any point re-trying and a fault should be propagated
@@ -135,18 +137,22 @@ class MessageFeedWorkerV2 implements Runnable {
     private void readDatafeed() {
 
         try {
-            List<V2BaseMessage> messageList = symClient.getDataFeedClient().getMessagesFromDatafeed(datafeed);
 
-            if (messageList != null) {
 
-                logger.debug("Received {} messages..", messageList.size());
+            List<SymEvent> symEvents = symClient.getDataFeedClient().getEventsFromDatafeed(datafeed);
 
-                messageList.forEach(dataFeedListener::onMessage);
+            if (symEvents != null) {
+
+                symEvents.forEach(dataFeedListener::onEvent);
+
             }
+
 
         } catch (Exception e) {
             logger.error("Failed to create read datafeed from pod, please check connection..resetting.", e);
             datafeed = null;
+
+
 
         }
 

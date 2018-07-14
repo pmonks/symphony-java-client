@@ -28,10 +28,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.symphonyoss.client.SymphonyClient;
 import org.symphonyoss.client.common.Constants;
-import org.symphonyoss.client.exceptions.DataFeedException;
-import org.symphonyoss.symphony.agent.model.Datafeed;
 import org.symphonyoss.client.events.SymEvent;
+import org.symphonyoss.client.exceptions.PresenceException;
+import org.symphonyoss.symphony.agent.model.Datafeed;
 import org.symphonyoss.symphony.clients.model.ApiVersion;
+import org.symphonyoss.symphony.clients.model.SymPresence;
+import org.symphonyoss.symphony.clients.model.SymPresenceFeed;
+import org.symphonyoss.symphony.clients.model.SymUserPresence;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -43,12 +46,12 @@ import java.util.concurrent.TimeUnit;
  *
  * @author Frank Tarsillo
  */
-class MessageFeedWorker implements Runnable {
+class PresenceWorker implements Runnable {
 
-    private final DataFeedListener dataFeedListener;
+    private final PresenceFeedListener presenceFeedListener;
     private final SymphonyClient symClient;
-    private final Logger logger = LoggerFactory.getLogger(MessageFeedWorker.class);
-    private Datafeed datafeed;
+    private final Logger logger = LoggerFactory.getLogger(PresenceWorker.class);
+    private SymPresenceFeed symPresenceFeed;
     private boolean shutdown;
 
 
@@ -56,11 +59,11 @@ class MessageFeedWorker implements Runnable {
      * Constructor
      *
      * @param symClient        Identifies the BOT user and exposes client APIs
-     * @param dataFeedListener Callback listener to publish new base messages on.
+     * @param  presenceFeedListener Callback listener to publish presence events.
      */
-    public MessageFeedWorker(SymphonyClient symClient, DataFeedListener dataFeedListener) {
+    public PresenceWorker(SymphonyClient symClient, PresenceFeedListener presenceFeedListener) {
         this.symClient = symClient;
-        this.dataFeedListener = dataFeedListener;
+        this.presenceFeedListener = presenceFeedListener;
 
 
     }
@@ -69,14 +72,14 @@ class MessageFeedWorker implements Runnable {
     public void run() {
 
 
-        //noinspection InfiniteLoopStatement
+
         while (!shutdown) {
 
             //Make sure its active
             initDatafeed();
 
             //Poll it
-            readDatafeed();
+            readPresenceFeed();
 
 
         }
@@ -90,34 +93,24 @@ class MessageFeedWorker implements Runnable {
     private void initDatafeed() {
 
 
-        while (datafeed == null) {
+        while (symPresenceFeed == null) {
             try {
                 logger.info("Creating datafeed with pod...");
 
-                datafeed = symClient.getDataFeedClient().createDatafeed(ApiVersion.V4);
+                symPresenceFeed = symClient.getPresenceClient().createPresenceFeed();
 
                 break;
-            } 
-            catch( DataFeedException e) {
+            } catch (Exception e) {
 
-        	/*
-        	 * TODO:
-        	 * This seems wrong to me, if the result of this is 404
-        	 * or some other non-transient error then there is hardly
-        	 * any point re-trying and a fault should be propagated
-        	 * to the application code.
-        	 * 
-        	 * It's not clear how best to do this though.....
-        	 * -Bruce.
-        	 */
-                logger.error("Failed to create datafeed with pod, please check connection..", e);
-                datafeed = null;
+
+                logger.error("Failed to create presence feed with pod, please check connection..", e);
+                symPresenceFeed = null;
 
                 //Can use properties to override default time wait
                 try {
 
                     TimeUnit.SECONDS.sleep(
-                            Long.valueOf(System.getProperty(Constants.DATAFEED_RECOVERY_WAIT_TIME, "5"))
+                            Long.valueOf(System.getProperty(Constants.PRESENCEFEED_RECOVERY_WAIT_TIME, "5"))
                     );
                 } catch (InterruptedException e1) {
                     logger.error("Interrupt.. ", e1);
@@ -132,36 +125,45 @@ class MessageFeedWorker implements Runnable {
     }
 
     /**
-     * Reads in raw messages from {@link org.symphonyoss.symphony.clients.DataFeedClient} and publishes out through
-     * {@link DataFeedListener}
+     *
      */
-    private void readDatafeed() {
+    private void readPresenceFeed() {
 
         try {
 
 
-            List<SymEvent> symEvents = symClient.getDataFeedClient().getEventsFromDatafeed(datafeed);
+            List<SymPresence> symPresences = symClient.getPresenceClient().getPresenceFeedUpdates(symPresenceFeed);
 
-            if(symEvents!=null){
+            if (symPresences != null) {
 
-               symEvents.forEach(dataFeedListener::onEvent);
+                symPresences.forEach(presenceFeedListener::onEvent);
 
             }
 
 
-
-//            List<V2BaseMessage> messageList = symClient.getDataFeedClient().getMessagesFromDatafeed(datafeed);
-//
-//            if (messageList != null) {
-//
-//                logger.debug("Received {} messages..", messageList.size());
-//
-//                messageList.forEach(dataFeedListener::onMessage);
-//            }
-
         } catch (Exception e) {
-            logger.error("Failed to create read datafeed from pod, please check connection..resetting.", e);
-            datafeed = null;
+            logger.error("Failed to create read presence feed from pod, please check connection..resetting.", e);
+
+            //Trying to remove it..
+            try {
+                symClient.getPresenceClient().removePresenceFeed(symPresenceFeed);
+            } catch (PresenceException e1) {
+               logger.error("Failed to remove presence feed handler: {}",  symPresenceFeed.getId());
+            }
+            symPresenceFeed = null;
+
+            //Can use properties to override default time wait
+            try {
+
+                TimeUnit.SECONDS.sleep(
+                        Long.valueOf(System.getProperty(Constants.PRESENCEFEED_RECOVERY_WAIT_TIME, "5"))
+                );
+            } catch (InterruptedException e1) {
+                logger.error("Interrupt.. ", e1);
+                Thread.currentThread().interrupt();
+            }
+
+
 
         }
 

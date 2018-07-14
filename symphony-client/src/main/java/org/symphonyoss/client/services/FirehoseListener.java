@@ -1,5 +1,6 @@
 /*
  *
+ *
  * Copyright 2016 The Symphony Software Foundation
  *
  * Licensed to The Symphony Software Foundation (SSF) under one
@@ -18,35 +19,31 @@
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
+ *
  */
 
 package org.symphonyoss.client.services;
 
-
-import org.symphonyoss.symphony.agent.model.*;
-import org.symphonyoss.symphony.clients.model.SymMessage;
+import org.symphonyoss.client.events.SymEvent;
 
 /**
- * Callback interface for room events
+ * Callback listener implemented for firehose events.
  *
- * @author  Frank Tarsillo
+ *
+ * @author Frank Tarsillo
  */
-public interface RoomListener {
+public interface FirehoseListener {
 
-    void onRoomMessage(SymMessage symMessage);
 
-    void onRoomDeactivatedMessage(RoomDeactivatedMessage roomDeactivatedMessage);
+    /**
+     * Listen to all events from firehose polling
+     *
+     *
+     * @param symEvent Events received from datafeed polling
+     */
+    void onEvent(SymEvent symEvent);
 
-    void onRoomMemberDemotedFromOwnerMessage(RoomMemberDemotedFromOwnerMessage roomMemberDemotedFromOwnerMessage);
 
-    void onRoomMemberPromotedToOwnerMessage(RoomMemberPromotedToOwnerMessage roomMemberPromotedToOwnerMessage);
 
-    void onRoomReactivatedMessage(RoomReactivatedMessage roomReactivatedMessage);
-
-    void onRoomUpdatedMessage(RoomUpdatedMessage roomUpdatedMessage);
-
-    void onUserJoinedRoomMessage(UserJoinedRoomMessage userJoinedRoomMessage);
-
-    void onUserLeftRoomMessage(UserLeftRoomMessage userLeftRoomMessage);
 
 }

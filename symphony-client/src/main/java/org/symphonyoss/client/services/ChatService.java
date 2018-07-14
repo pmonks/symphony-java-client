@@ -31,8 +31,9 @@ import org.symphonyoss.client.model.CacheType;
 import org.symphonyoss.client.model.Chat;
 import org.symphonyoss.symphony.clients.model.ApiVersion;
 import org.symphonyoss.symphony.clients.model.SymMessage;
+import org.symphonyoss.symphony.clients.model.SymStream;
 import org.symphonyoss.symphony.clients.model.SymUser;
-import org.symphonyoss.symphony.pod.model.Stream;
+
 
 import java.util.HashSet;
 import java.util.Set;
@@ -60,27 +61,17 @@ public class ChatService implements ChatListener {
 
     private final SymphonyClient symClient;
     private final Logger logger = LoggerFactory.getLogger(ChatService.class);
-    private ApiVersion apiVersion;
+
+
 
 
     /**
+     * Init
+     *
      * @param symClient Symphony Client required to access all underlying clients functions.
      */
     public ChatService(SymphonyClient symClient) {
 
-        this(symClient, ApiVersion.V2);
-
-
-    }
-
-    /**
-     * Specify a version of ChatServer to use.  Version is aligning with LLC REST API endpoint versions.
-     * @param symClient Symphony client required to access all underlying clients functions.
-     * @param apiVersion The version of the ChatServer to use which is aligned with LLC REST API endpoint versions.
-     */
-    public ChatService(SymphonyClient symClient, ApiVersion apiVersion) {
-
-        this.apiVersion = apiVersion;
         this.symClient = symClient;
 
         //Register this service against the message service which is backed by datafeed.
@@ -127,9 +118,9 @@ public class ChatService implements ChatListener {
             //Lets find the stream ID for all users in conversation.
             try {
 
-                Stream stream = symClient.getStreamsClient().getStream(chat.getRemoteUsers());
+                SymStream stream = symClient.getStreamsClient().getStream(chat.getRemoteUsers());
                 if (stream != null) {
-                    chat.setStreamId(stream.getId());
+                    chat.setStreamId(stream.getStreamId());
 
                 } else {
                     logger.error("Failed to obtain stream ID for chat...");

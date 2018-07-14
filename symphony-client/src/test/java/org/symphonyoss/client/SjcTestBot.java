@@ -26,6 +26,7 @@ package org.symphonyoss.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.symphonyoss.client.events.*;
 import org.symphonyoss.client.exceptions.AttachmentsException;
 import org.symphonyoss.client.exceptions.MessagesException;
 import org.symphonyoss.client.exceptions.PresenceException;
@@ -33,11 +34,10 @@ import org.symphonyoss.client.exceptions.SymException;
 import org.symphonyoss.client.model.Chat;
 import org.symphonyoss.client.model.Room;
 import org.symphonyoss.client.services.*;
-import org.symphonyoss.symphony.agent.model.*;
 import org.symphonyoss.symphony.clients.model.SymAttachmentInfo;
 import org.symphonyoss.symphony.clients.model.SymMessage;
+import org.symphonyoss.symphony.clients.model.SymPresence;
 import org.symphonyoss.symphony.clients.model.SymUserConnection;
-import org.symphonyoss.symphony.pod.model.Presence;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -53,7 +53,7 @@ import java.util.List;
  *
  * @author Frank Tarsillo
  */
-public class SjcTestBot implements ChatListener, ChatServiceListener, RoomListener, RoomServiceListener, ConnectionsListener {
+public class SjcTestBot implements ChatListener, ChatServiceListener, RoomEventListener, RoomServiceEventListener, ConnectionsListener {
 
     SymphonyClient symphonyClient;
     String sjcClient = System.getProperty("sender.user.email", "sjc.testclient");
@@ -63,23 +63,26 @@ public class SjcTestBot implements ChatListener, ChatServiceListener, RoomListen
 
     public SjcTestBot() throws SymException {
 
-        symphonyClient = SymphonyClientFactory.getClient(SymphonyClientFactory.TYPE.BASIC,
-                System.getProperty("bot.user.email", "sjc.testbot"),
-                System.getProperty("bot.user.cert.file"),
-                System.getProperty("bot.user.cert.password"),
-                System.getProperty("truststore.file"),
-                System.getProperty("truststore.password"));
-
-        symphonyClient.getRoomService().addRoomServiceListener(this);
+        SymphonyClientConfig symphonyClientConfig = new SymphonyClientConfig();
+        symphonyClientConfig.set(SymphonyClientConfigID.USER_CERT_FILE,System.getProperty("bot.user.cert.file"));
+        symphonyClientConfig.set(SymphonyClientConfigID.USER_CERT_PASSWORD,System.getProperty("bot.user.cert.password"));
+        symphonyClientConfig.set(SymphonyClientConfigID.TRUSTSTORE_FILE,System.getProperty("truststore.file"));
+        symphonyClientConfig.set(SymphonyClientConfigID.TRUSTSTORE_PASSWORD,System.getProperty("truststore.password"));
+        symphonyClientConfig.set(SymphonyClientConfigID.USER_EMAIL, System.getProperty("bot.user.email", "sjc.testbot"));
 
 
-        testClientStreamId = symphonyClient.getStreamsClient().getStreamFromEmail(sjcClient).getId();
+        symphonyClient = SymphonyClientFactory.getClient(SymphonyClientFactory.TYPE.V4, symphonyClientConfig);
+
+        symphonyClient.getRoomService().addRoomServiceEventListener(this);
+
+
+        testClientStreamId = symphonyClient.getStreamsClient().getStreamFromEmail(sjcClient).getStreamId();
         testClientId = symphonyClient.getUsersClient().getUserFromEmail(sjcClient).getId();
 
         Room room = new Room();
         room.setStreamId(System.getProperty("test.room.stream"));
         room.setId(System.getProperty("test.room.stream"));
-        room.addListener(this);
+        room.addEventListener(this);
         symphonyClient.getRoomService().joinRoom(room);
 
         symphonyClient.getChatService().addListener(this);
@@ -97,44 +100,45 @@ public class SjcTestBot implements ChatListener, ChatServiceListener, RoomListen
     }
 
     @Override
-    public void onRoomDeactivatedMessage(RoomDeactivatedMessage roomDeactivatedMessage) {
+    public void onSymRoomDeactivated(SymRoomDeactivated symRoomDeactivated) {
 
     }
 
     @Override
-    public void onRoomMemberDemotedFromOwnerMessage(RoomMemberDemotedFromOwnerMessage roomMemberDemotedFromOwnerMessage) {
+    public void onSymRoomMemberDemotedFromOwner(SymRoomMemberDemotedFromOwner symRoomMemberDemotedFromOwner) {
 
     }
 
     @Override
-    public void onRoomMemberPromotedToOwnerMessage(RoomMemberPromotedToOwnerMessage roomMemberPromotedToOwnerMessage) {
+    public void onSymRoomMemberPromotedToOwner(SymRoomMemberPromotedToOwner symRoomMemberPromotedToOwner) {
 
     }
 
     @Override
-    public void onRoomReactivatedMessage(RoomReactivatedMessage roomReactivatedMessage) {
+    public void onSymRoomReactivated(SymRoomReactivated symRoomReactivated) {
 
     }
 
     @Override
-    public void onRoomUpdatedMessage(RoomUpdatedMessage roomUpdatedMessage) {
+    public void onSymRoomUpdated(SymRoomUpdated symRoomUpdated) {
 
     }
 
     @Override
-    public void onUserJoinedRoomMessage(UserJoinedRoomMessage userJoinedRoomMessage) {
+    public void onSymUserJoinedRoom(SymUserJoinedRoom symUserJoinedRoom) {
 
     }
 
     @Override
-    public void onUserLeftRoomMessage(UserLeftRoomMessage userLeftRoomMessage) {
+    public void onSymUserLeftRoom(SymUserLeftRoom symUserLeftRoom) {
 
     }
 
     @Override
-    public void onRoomCreatedMessage(RoomCreatedMessage roomCreatedMessage) {
+    public void onSymRoomCreated(SymRoomCreated symRoomCreated) {
 
     }
+
 
     @Override
     public void onMessage(SymMessage symMessage) {
@@ -143,7 +147,7 @@ public class SjcTestBot implements ChatListener, ChatServiceListener, RoomListen
 
     @Override
     public void onNewRoom(Room room) {
-        room.addListener(this);
+        room.addEventListener(this);
 
     }
 
@@ -172,21 +176,26 @@ public class SjcTestBot implements ChatListener, ChatServiceListener, RoomListen
         if (chunks == null)
             return;
 
-        if (chunks[0].equals(SymphonyClientIT.CHAT_COMMAND_MESSAGE)) {
-            logger.info("Test Bot: New chat message detected: {}", symMessage.getMessageText());
-            sendResponse(symMessage);
-        } else if (chunks[0].equals(SymphonyClientIT.MULTI_PARTY_CHAT_COMMAND_MESSAGE)) {
-            logger.info("Test Bot: New chat message detected: {}", symMessage.getMessageText());
-            sendResponse(symMessage);
-        } else if (chunks[0].equals(SymphonyClientIT.PRESENCE_COMMAND_MESSAGE)) {
+        switch (chunks[0]) {
+            case SymphonyClientIT.CHAT_COMMAND_MESSAGE:
+                logger.info("Test Bot: New chat message detected: {}", symMessage.getMessageText());
+                sendResponse(symMessage);
+                break;
+            case SymphonyClientIT.MULTI_PARTY_CHAT_COMMAND_MESSAGE:
+                logger.info("Test Bot: New chat message detected: {}", symMessage.getMessageText());
+                sendResponse(symMessage);
+                break;
+            case SymphonyClientIT.PRESENCE_COMMAND_MESSAGE:
 
-            sendPresenceResponse();
+                sendPresenceResponse();
 
-        } else if (chunks[0].equals(SymphonyClientIT.ATTACHMENT_COMMAND_MESSAGE)) {
+                break;
+            case SymphonyClientIT.ATTACHMENT_COMMAND_MESSAGE:
 
-            logger.info("Attachment message received");
-            sendAttachmentResponse(symMessage);
+                logger.info("Attachment message received");
+                sendAttachmentResponse(symMessage);
 
+                break;
         }
 
 
@@ -248,11 +257,12 @@ public class SjcTestBot implements ChatListener, ChatServiceListener, RoomListen
         try {
 
 
-            Presence presence = symphonyClient.getPresenceClient().getUserPresence(testClientId);
+            SymPresence presence = symphonyClient.getPresenceClient().getUserPresence(testClientId, false);
 
 
             SymMessage message = new SymMessage();
-            message.setMessage(SymphonyClientIT.PRESENCE_COMMAND_MESSAGE + " " + presence.getCategory().toString());
+         //  message.setApiVersion(ApiVersion.V2);
+            message.setMessageText(SymphonyClientIT.PRESENCE_COMMAND_MESSAGE + " " + presence.getCategory().toString());
 
             sendResponse(message);
 
@@ -271,6 +281,7 @@ public class SjcTestBot implements ChatListener, ChatServiceListener, RoomListen
         try {
 
             symMessage.setStreamId(testClientStreamId);
+
             symphonyClient.getMessageService().sendMessage(sjcClient, symMessage);
         } catch (MessagesException e) {
             logger.error("Could not send onRoomMessage reply", e);

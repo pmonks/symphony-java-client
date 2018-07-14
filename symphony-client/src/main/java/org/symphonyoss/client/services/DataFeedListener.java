@@ -22,7 +22,6 @@
 
 package org.symphonyoss.client.services;
 
-import org.symphonyoss.symphony.agent.model.V2BaseMessage;
 import org.symphonyoss.client.events.SymEvent;
 
 /**
@@ -33,13 +32,6 @@ import org.symphonyoss.client.events.SymEvent;
  */
 interface DataFeedListener {
 
-    /**
-     * Base messages from datafeed polling
-     * This is only enabled when V2 API is being used.
-     * @param message Base message
-     */
-    void onMessage(V2BaseMessage message);
-
 
     /**
      * Listen to all events from datafeed polling
@@ -48,4 +40,8 @@ interface DataFeedListener {
      * @param symEvent Events received from datafeed polling
      */
     void onEvent(SymEvent symEvent);
+
+
+
+
 }

@@ -24,18 +24,15 @@
 
 package org.symphonyoss.symphony.clients;
 
-import javax.ws.rs.client.Client;
+import org.symphonyoss.client.exceptions.SystemException;
+import org.symphonyoss.symphony.clients.model.RestApiVersion;
+import org.symphonyoss.symphony.clients.model.SymAgentHealthCheck;
 
 /**
- * @author Frank Tarsillo on 8/8/17.
+ * @author Frank Tarsillo on 10/15/17.
  */
-@Deprecated
-public class AuthorizationClient extends AuthenticationClient{
-    public AuthorizationClient(String sessionUrl, String keyUrl) {
-        super(sessionUrl, keyUrl);
-    }
+public interface AgentSystemClient {
+    SymAgentHealthCheck getAgentHealthCheck() throws SystemException;
 
-    public AuthorizationClient(String sessionUrl, String keyUrl, Client httpClient) {
-        super(sessionUrl, keyUrl, httpClient);
-    }
+    boolean isRestApiVersionCompatible(RestApiVersion apiVersion) throws SystemException;
 }

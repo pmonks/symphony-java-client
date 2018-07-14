@@ -22,10 +22,10 @@
 
 package org.symphonyoss.symphony.clients.model;
 
+import org.apache.commons.lang3.StringEscapeUtils;
 import org.symphonyoss.client.common.MLTypes;
 import org.symphonyoss.client.exceptions.SymException;
 import org.symphonyoss.client.util.MlMessageParser;
-import org.symphonyoss.symphony.agent.model.Message;
 import org.symphonyoss.symphony.agent.model.V2BaseMessage;
 import org.symphonyoss.symphony.agent.model.V2Message;
 import org.symphonyoss.symphony.agent.model.V4Message;
@@ -40,26 +40,6 @@ import java.util.List;
  */
 @SuppressWarnings("WeakerAccess")
 public class SymMessage {
-
-
-    public enum Format {
-        TEXT("TEXT"),
-
-        MESSAGEML("MESSAGEML");
-
-        private String value;
-
-        Format(String value) {
-            this.value = value;
-        }
-
-        @Override
-        public String toString() {
-            return String.valueOf(value);
-        }
-    }
-
-    private Format format = Format.TEXT;
 
     private String id = null;
 
@@ -86,10 +66,11 @@ public class SymMessage {
 
     private File attachementThumbnail = null;
 
+    private ApiVersion apiVersion = null;
+
     public SymUser getSymUser() {
         return symUser;
     }
-
 
 
     @SuppressWarnings("unused")
@@ -170,14 +151,6 @@ public class SymMessage {
         this.entityData = entityData;
     }
 
-    public Format getFormat() {
-        return format;
-    }
-
-    public void setFormat(Format format) {
-        this.format = format;
-    }
-
 
     public SymStream getStream() {
         return stream;
@@ -204,16 +177,17 @@ public class SymMessage {
         this.attachementThumbnail = attachementThumbnail;
     }
 
-    @Deprecated
-    public static SymMessage toSymMessage(Message message) {
-        SymMessage symMessage = new SymMessage();
-        symMessage.setId(message.getId());
-        symMessage.setStreamId(message.getStreamId());
-        symMessage.setMessage(message.getMessage());
-        symMessage.setMessageType(message.getMessageType());
-        symMessage.setFromUserId(message.getFromUserId());
-        symMessage.setTimestamp(message.getTimestamp());
-        return symMessage;
+
+    public ApiVersion getApiVersion() {
+
+        if (apiVersion == null)
+            apiVersion = ApiVersion.V4;
+
+        return apiVersion;
+    }
+
+    public void setApiVersion(ApiVersion apiVersion) {
+        this.apiVersion = apiVersion;
     }
 
     public static SymMessage toSymMessage(V2BaseMessage v2BaseMessage) {
@@ -243,52 +217,18 @@ public class SymMessage {
         symMessage.setTimestamp(Long.toString(v4Message.getTimestamp()));
         symMessage.setId(v4Message.getMessageId());
         symMessage.setStreamId(v4Message.getStream().getStreamId());
-        symMessage.setMessageType(Format.MESSAGEML.toString());
         symMessage.setFromUserId(v4Message.getUser().getUserId());
         symMessage.setSymUser(SymUser.toSymUser(v4Message.getUser()));
         symMessage.setMessage(v4Message.getMessage());
         symMessage.setStream(SymStream.toSymStream(v4Message.getStream()));
-        symMessage.setAttachments(SymAttachmentInfo.toAttachmentsInfos(v4Message.getAttachments()));
+
+        if (v4Message.getAttachments() != null)
+            symMessage.setAttachments(SymAttachmentInfo.toAttachmentsInfos(v4Message.getAttachments()));
+
         symMessage.setEntityData(v4Message.getData());
 
 
         return symMessage;
-    }
-
-    @Deprecated
-    public static Message toV1Message(V2BaseMessage v2BaseMessage) {
-
-        return toV2Message(v2BaseMessage);
-    }
-
-    @Deprecated
-    public static Message toV1Message(SymMessage symMessage) {
-
-        Message v1Message = new Message();
-        v1Message.setId(symMessage.getId());
-        v1Message.setStreamId(symMessage.getStreamId());
-        v1Message.setMessage(symMessage.getMessage());
-        v1Message.setMessageType(symMessage.getMessageType());
-        v1Message.setFromUserId(symMessage.getFromUserId());
-        v1Message.setTimestamp(symMessage.getTimestamp());
-        return v1Message;
-    }
-
-
-    @Deprecated
-    public static Message toV2Message(V2BaseMessage v2BaseMessage) {
-
-        Message v1Message = new Message();
-        v1Message.setId(v2BaseMessage.getId());
-        v1Message.setStreamId(v2BaseMessage.getStreamId());
-        v1Message.setMessageType(v2BaseMessage.getV2messageType());
-        v1Message.setTimestamp(v2BaseMessage.getTimestamp());
-        if (v2BaseMessage instanceof V2Message) {
-            v1Message.setMessage(((V2Message) v2BaseMessage).getMessage());
-            v1Message.setFromUserId(((V2Message) v2BaseMessage).getFromUserId());
-        }
-
-        return v1Message;
     }
 
 
@@ -309,16 +249,22 @@ public class SymMessage {
 
     public void setMessageText(ApiVersion apiVersion, String text) {
 
+        //Lets make sure we comply with XML
+        text = StringEscapeUtils.escapeXml(text);
+
+
         if (apiVersion != null && !apiVersion.equals(ApiVersion.V2)) {
             setMessage(MLTypes.START_PML + text + MLTypes.END_PML);
         } else {
-            setMessage(text);
+            setMessageType("MESSAGEML");
+            setMessage(MLTypes.START_ML + text + MLTypes.END_ML);
         }
+
 
     }
 
-    public void setMessageText(String text){
-        setMessageText(null,text);
+    public void setMessageText(String text) {
+        setMessageText(apiVersion, text);
 
     }
 

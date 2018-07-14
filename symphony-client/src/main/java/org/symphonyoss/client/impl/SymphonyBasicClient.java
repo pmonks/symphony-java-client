@@ -23,11 +23,8 @@
 package org.symphonyoss.client.impl;
 
 
-import java.util.Timer;
-import java.util.TimerTask;
-
-import javax.ws.rs.client.Client;
-
+import org.glassfish.jersey.client.ClientConfig;
+import org.glassfish.jersey.jackson.JacksonFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.symphonyoss.client.SymphonyClient;
@@ -40,32 +37,18 @@ import org.symphonyoss.client.exceptions.SymCacheException;
 import org.symphonyoss.client.exceptions.SymException;
 import org.symphonyoss.client.model.CacheType;
 import org.symphonyoss.client.model.SymAuth;
-import org.symphonyoss.client.services.ChatService;
-import org.symphonyoss.client.services.MessageService;
-import org.symphonyoss.client.services.RoomService;
-import org.symphonyoss.client.services.SymCache;
-import org.symphonyoss.client.services.SymUserCache;
-import org.symphonyoss.symphony.clients.AttachmentsClient;
-import org.symphonyoss.symphony.clients.AttachmentsFactory;
-import org.symphonyoss.symphony.clients.AuthenticationClient;
-import org.symphonyoss.symphony.clients.ConnectionsClient;
-import org.symphonyoss.symphony.clients.ConnectionsFactory;
-import org.symphonyoss.symphony.clients.DataFeedClient;
-import org.symphonyoss.symphony.clients.DataFeedFactory;
-import org.symphonyoss.symphony.clients.MessagesClient;
-import org.symphonyoss.symphony.clients.MessagesFactory;
-import org.symphonyoss.symphony.clients.PresenceClient;
-import org.symphonyoss.symphony.clients.PresenceFactory;
-import org.symphonyoss.symphony.clients.RoomMembershipClient;
-import org.symphonyoss.symphony.clients.RoomMembershipFactory;
-import org.symphonyoss.symphony.clients.ShareClient;
-import org.symphonyoss.symphony.clients.ShareFactory;
-import org.symphonyoss.symphony.clients.StreamsClient;
-import org.symphonyoss.symphony.clients.StreamsFactory;
-import org.symphonyoss.symphony.clients.UsersClient;
-import org.symphonyoss.symphony.clients.UsersFactory;
+import org.symphonyoss.client.services.*;
+import org.symphonyoss.symphony.clients.*;
+import org.symphonyoss.symphony.clients.jmx.ClientCheck;
 import org.symphonyoss.symphony.clients.model.ApiVersion;
 import org.symphonyoss.symphony.clients.model.SymUser;
+import org.symphonyoss.symphony.pod.invoker.JSON;
+
+import javax.management.*;
+import javax.ws.rs.client.Client;
+import java.lang.management.ManagementFactory;
+import java.util.Timer;
+import java.util.TimerTask;
 
 /**
  * Implements a full abstraction of underlying clients and exposes services to simplify
@@ -86,6 +69,7 @@ public class SymphonyBasicClient implements SymphonyClient {
     private MessageService messageService;
     private ChatService chatService;
     private RoomService roomService;
+    private PresenceService presenceService;
     private SymUser localUser;
     private String agentUrl;
     private String podUrl;
@@ -98,97 +82,230 @@ public class SymphonyBasicClient implements SymphonyClient {
     private AttachmentsClient attachmentsClient;
     private ConnectionsClient connectionsClient;
     private ShareClient shareClient;
+    private SymphonyApis symphonyApis;
     private Client defaultHttpClient;
+    private Client podHttpClient;
+    private Client agentHttpClient;
+    private SymphonyClientConfig config;
     private final long SYMAUTH_REFRESH_TIME = Long.parseLong(System.getProperty(Constants.SYMAUTH_REFRESH_TIME, "7200000"));
-    SymUserCache symUserCache;
-    private ApiVersion apiVersion = ApiVersion.V2;
+    private SymUserCache symUserCache;
+    private ApiVersion apiVersion = ApiVersion.V4;
+    private String name;
+    private Timer timer;
 
-    public SymphonyBasicClient() {}
 
+    public SymphonyBasicClient() {
+        this(ApiVersion.V4);
+    }
 
-    public SymphonyBasicClient(ApiVersion apiVersion){
-
+    public SymphonyBasicClient(ApiVersion apiVersion) {
         this.apiVersion = apiVersion;
     }
 
-    
     @Override
-    public void init(Client httpClient, SymphonyClientConfig initParams) throws InitException, AuthenticationException {
-	this.defaultHttpClient = httpClient;
-	
-	AuthenticationClient authClient = new AuthenticationClient(
-                initParams.get(SymphonyClientConfigID.SESSIONAUTH_URL),
-                initParams.get(SymphonyClientConfigID.KEYAUTH_URL));
+    public void init(SymphonyClientConfig config) throws InitException, AuthenticationException {
 
-        authClient.setKeystores(
-                initParams.get(SymphonyClientConfigID.TRUSTSTORE_FILE),
-                initParams.get(SymphonyClientConfigID.TRUSTSTORE_PASSWORD),
-                initParams.get(SymphonyClientConfigID.USER_CERT_FILE),
-                initParams.get(SymphonyClientConfigID.USER_CERT_PASSWORD));
+        this.config = config;
+        try {
+
+            init(CustomHttpClient.getDefaultHttpClient(config), config);
+
+        } catch (Exception e) {
+            throw new InitException("Failed to initialize network...", e);
+        }
+
+    }
+
+    /**
+     * Set name of SJC to be used for threading
+     *
+     * @param name Used for threading
+     */
+    @Override
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    /**
+     * Return name of SJC
+     *
+     * @return Name of SJC
+     */
+    @Override
+    public String getName() {
+        return this.name;
+    }
+
+    /**
+     * Initialize the SJC with a custom http client for both pod and agent connectivity.
+     *
+     * @param podHttpClient   Custom http client to use when connecting to the pod
+     * @param agentHttpClient Custom http client to use when connecting to the agent server
+     * @param config          Configuration object
+     * @throws InitException           Exception from initialization
+     * @throws AuthenticationException Exception from authorization.
+     */
+    @Override
+    public void init(Client podHttpClient, Client agentHttpClient, SymphonyClientConfig config) throws InitException, AuthenticationException {
+        this.podHttpClient = podHttpClient;
+        this.agentHttpClient = agentHttpClient;
+        this.defaultHttpClient = podHttpClient;
+        this.config = config;
+
+
+        AuthenticationClient authClient = new AuthenticationClient(
+                config.get(SymphonyClientConfigID.SESSIONAUTH_URL),
+                config.get(SymphonyClientConfigID.KEYAUTH_URL),
+                agentHttpClient);
+
 
         SymAuth symAuth = authClient.authenticate();
 
-        init(
-                symAuth,
-                initParams.get(SymphonyClientConfigID.USER_EMAIL),
-                initParams.get(SymphonyClientConfigID.AGENT_URL),
-                initParams.get(SymphonyClientConfigID.POD_URL)
-                );
+        init(symAuth, config);
+
+
     }
-
-
 
     @Override
-    public void init(SymphonyClientConfig config) throws InitException, AuthenticationException {
-	init(null, config);
+    public void init(Client httpClient, SymphonyClientConfig config) throws InitException, AuthenticationException {
+        this.defaultHttpClient = httpClient;
+        init(defaultHttpClient, defaultHttpClient, config);
+
     }
 
+    /**
+     * Initialize client with required parameters.
+     *
+     * @param symAuth   Contains valid key and session tokens generated from AuthenticationClient.
+     * @param userEmail Email address of the BOT
+     * @param agentUrl  The Agent URL
+     * @param podUrl    The Service URL (in most cases it's the POD URL)
+     * @throws InitException Failure of a specific service most likely due to connectivity issues
+     */
+    @Override
+    @Deprecated
+    public void init(SymAuth symAuth, String userEmail, String agentUrl, String podUrl) throws InitException {
+        updateConfig(agentUrl, podUrl, userEmail);
+        init(symAuth, config);
+
+
+    }
+
+
+    /**
+     * Initialize client with required parameters.  Services will be enabled by default.
+     *
+     * @param httpClient Custom http client to use when initiating the client
+     * @param symAuth    Contains valid key and session tokens generated from AuthenticationClient.
+     * @param userEmail  Email address of the BOT
+     * @param agentUrl   The Agent URL
+     * @param podUrl     The Service URL (in most cases it's the POD URL)
+     * @throws InitException Failure of a specific service most likely due to connectivity issues
+     */
+    @Override
+    @Deprecated
+    public void init(Client httpClient, SymAuth symAuth, String userEmail, String agentUrl, String podUrl) throws InitException {
+
+        this.defaultHttpClient = httpClient;
+        this.agentHttpClient = httpClient;
+        this.defaultHttpClient = httpClient;
+
+        updateConfig(agentUrl, podUrl, userEmail);
+
+        init(symAuth, config);
+    }
+
+    /**
+     * Initialize client with required parameters.
+     *
+     * @param symAuth         Contains valid key and session tokens generated from AuthenticationClient.
+     * @param userEmail       Email address of the BOT
+     * @param agentUrl        The Agent URL
+     * @param podUrl          The Service URL (in most cases it's the POD URL)
+     * @param disableServices Disable all real-time services (MessageService, RoomService, ChatService)
+     * @throws InitException Failure of a specific service most likely due to connectivity issues
+     */
+    @Override
+    @Deprecated
+    public void init(SymAuth symAuth, String userEmail, String agentUrl, String podUrl, boolean disableServices) throws InitException {
+
+        updateConfig(agentUrl, podUrl, userEmail);
+        config.set(SymphonyClientConfigID.DISABLE_SERVICES, String.valueOf(disableServices));
+
+        init(symAuth, config);
+
+    }
 
 
     /**
      * Initialize client with required parameters.
      *
-     * @param symAuth    Contains valid key and session tokens generated from AuthenticationClient.
-     * @param email      Email address of the BOT
-     * @param agentUrl   The Agent URL
-     * @param podUrl The Service URL (in most cases it's the POD URL)
+     * @param symAuth Contains valid key and session tokens generated from AuthenticationClient.
+     * @param config  Symphony client config
      * @throws InitException Failure of a specific service most likely due to connectivity issues
      */
     @Override
-    public void init(SymAuth symAuth, String email, String agentUrl, String podUrl) throws InitException {
+    public void init(SymAuth symAuth, SymphonyClientConfig config) throws InitException {
+
+        this.config = config;
+        this.symAuth = symAuth;
+
+        updateConfig(config);
+
+
+        try {
+            if (defaultHttpClient == null)
+                defaultHttpClient = CustomHttpClient.getDefaultHttpClient(config);
+        } catch (Exception e) {
+            logger.error("Could not set default http client from config...", e);
+        }
+
+
+        if (podHttpClient == null)
+            podHttpClient = defaultHttpClient;
+
+        if (agentHttpClient == null)
+            agentHttpClient = defaultHttpClient;
+
 
         String NOT_LOGGED_IN_MESSAGE = "Currently not logged into Agent, please check certificates and tokens.";
         if (symAuth == null || symAuth.getSessionToken() == null || symAuth.getKeyToken() == null)
             throw new InitException("Symphony Authorization is not valid", new Throwable(NOT_LOGGED_IN_MESSAGE));
 
-        if (agentUrl == null)
+        if (config.get(SymphonyClientConfigID.AGENT_URL) == null)
             throw new InitException("Failed to provide agent URL", new Throwable("Failed to provide agent URL"));
 
-        if (podUrl == null)
+        if (config.get(SymphonyClientConfigID.POD_URL) == null)
             throw new InitException("Failed to provide service URL", new Throwable("Failed to provide service URL"));
 
         this.symAuth = symAuth;
-        this.agentUrl = agentUrl;
-        this.podUrl = podUrl;
-
+        this.name = config.get(SymphonyClientConfigID.USER_EMAIL);
 
         //Init all clients.
-        dataFeedClient = (defaultHttpClient == null) ? DataFeedFactory.getClient(this, DataFeedFactory.TYPE.DEFAULT) : DataFeedFactory.getClient(this, DataFeedFactory.TYPE.HTTPCLIENT);
-        messagesClient = (defaultHttpClient == null) ? MessagesFactory.getClient(this, MessagesFactory.TYPE.DEFAULT,apiVersion) : MessagesFactory.getClient(this, MessagesFactory.TYPE.HTTPCLIENT,apiVersion);
-        presenceClient = (defaultHttpClient == null) ? PresenceFactory.getClient(this, PresenceFactory.TYPE.DEFAULT) : PresenceFactory.getClient(this, PresenceFactory.TYPE.HTTPCLIENT);
-        streamsClient = (defaultHttpClient == null) ? StreamsFactory.getClient(this, StreamsFactory.TYPE.DEFAULT) : StreamsFactory.getClient(this, StreamsFactory.TYPE.HTTPCLIENT);
-        usersClient = (defaultHttpClient == null) ? UsersFactory.getClient(this, UsersFactory.TYPE.DEFAULT) : UsersFactory.getClient(this, UsersFactory.TYPE.HTTPCLIENT);
-        shareClient = (defaultHttpClient == null) ? ShareFactory.getClient(this, ShareFactory.TYPE.DEFAULT) : ShareFactory.getClient(this, ShareFactory.TYPE.HTTPCLIENT);
-        attachmentsClient = (defaultHttpClient == null) ? AttachmentsFactory.getClient(this, AttachmentsFactory.TYPE.DEFAULT) : AttachmentsFactory.getClient(this, AttachmentsFactory.TYPE.HTTPCLIENT);
-        roomMembershipClient = (defaultHttpClient == null) ? RoomMembershipFactory.getClient(this, RoomMembershipFactory.TYPE.DEFAULT) : RoomMembershipFactory.getClient(this, RoomMembershipFactory.TYPE.HTTPCLIENT);
-        connectionsClient = (defaultHttpClient == null) ? ConnectionsFactory.getClient(this, ConnectionsFactory.TYPE.DEFAULT) : ConnectionsFactory.getClient(this, ConnectionsFactory.TYPE.HTTPCLIENT);
+        dataFeedClient = DataFeedFactory.getClient(this);
+        messagesClient = MessagesFactory.getClient(this);
+        presenceClient = PresenceFactory.getClient(this);
+        streamsClient = StreamsFactory.getClient(this);
+        usersClient = UsersFactory.getClient(this);
+        shareClient = ShareFactory.getClient(this);
+        attachmentsClient = AttachmentsFactory.getClient(this);
+        roomMembershipClient = RoomMembershipFactory.getClient(this);
+        connectionsClient = ConnectionsFactory.getClient(this);
+        symphonyApis = SymphonyApisFactory.getClient(this);
 
         try {
-            messageService = new MessageService(this,apiVersion);
-            chatService = new ChatService(this,apiVersion);
-            roomService = new RoomService(this,apiVersion);
 
-            localUser = usersClient.getUserFromEmail(email);
+
+            if (!Boolean.parseBoolean(config.get(SymphonyClientConfigID.DISABLE_SERVICES, "False"))) {
+                messageService = new MessageService(this);
+                chatService = new ChatService(this);
+                roomService = new RoomService(this);
+                presenceService = new PresenceService(this);
+
+            }
+
+
+            localUser = usersClient.getUserBySession(symAuth);
         } catch (SymException e) {
             logger.error("Failed to initialize client..", e);
 
@@ -198,9 +315,9 @@ public class SymphonyBasicClient implements SymphonyClient {
                     " Here is what you have configured:\n" +
                     "SessionToken: " + symAuth.getSessionToken() + "\n" +
                     "KeyToken: " + symAuth.getKeyToken() + "\n" +
-                    "Email: " + email + "\n" +
-                    "AgentUrl: " + agentUrl + "\n" +
-                    "podUrl: " + podUrl);
+                    "Email: " + config.get(SymphonyClientConfigID.USER_EMAIL) + "\n" +
+                    "AgentUrl: " + config.get(SymphonyClientConfigID.AGENT_URL) + "\n" +
+                    "podUrl: " + config.get(SymphonyClientConfigID.POD_URL));
         }
 
 
@@ -209,19 +326,18 @@ public class SymphonyBasicClient implements SymphonyClient {
         //Refresh token every so often..
         TimerTask authRefreshTask = new AuthRefreshTask(this);
         // running timer task as daemon thread
-        Timer timer = new Timer(true);
+        timer = new Timer("AuthRefresh:" + this.getName(), true);
         timer.scheduleAtFixedRate(authRefreshTask, SYMAUTH_REFRESH_TIME, SYMAUTH_REFRESH_TIME);
 
 
+        //Publish MBean via JMX
+        //Default is true
+        if (Boolean.parseBoolean(config.get(SymphonyClientConfigID.HEALTHCHECK_JMX_ENABLED, "True"))) {
+            logger.info("Registering JMX Health Bean...");
+            this.registerHealthMBean();
+        }
     }
 
-
-    @Override
-    public void init(Client httpClient, SymAuth symAuth, String email, String agentUrl, String podUrl) throws InitException {
-
-        this.defaultHttpClient = httpClient;
-        init(symAuth, email, agentUrl, podUrl);
-    }
 
     @Override
     public SymAuth getSymAuth() {
@@ -244,28 +360,10 @@ public class SymphonyBasicClient implements SymphonyClient {
     /**
      * @param agentUrl Agent URL
      */
-    @SuppressWarnings("unused")
     public void setAgentUrl(String agentUrl) {
         this.agentUrl = agentUrl;
     }
 
-    /**
-     * @return Service URL which can be either the Agent URL or POD URL
-     */
-    @Override
-    @Deprecated
-    public String getServiceUrl() {
-        return podUrl;
-    }
-
-    /**
-     * @param podUrl Service URL which can be either the Agent URL or POD URL
-     */
-    @SuppressWarnings("unused")
-    @Deprecated
-    public void setServiceUrl(String podUrl) {
-        this.podUrl = podUrl;
-    }
 
     /**
      * @return Service URL which can be either the Agent URL or POD URL
@@ -381,11 +479,11 @@ public class SymphonyBasicClient implements SymphonyClient {
     @Override
     public void setCache(SymCache symCache) throws SymCacheException {
 
-        if(symCache.getCacheType() == null)
+        if (symCache.getCacheType() == null)
             throw new SymCacheException("Cache type not set...");
 
-        if(symCache.getCacheType() == CacheType.USER)
-            symUserCache = (SymUserCache)symCache;
+        if (symCache.getCacheType() == CacheType.USER)
+            symUserCache = (SymUserCache) symCache;
 
     }
 
@@ -401,7 +499,119 @@ public class SymphonyBasicClient implements SymphonyClient {
 
     @Override
     public void shutdown() {
-        getMessageService().shutdown();
+
+        if (getMessageService() != null)
+            getMessageService().shutdown();
+
+
+        if (getPresenceService() != null)
+            getPresenceService().shutdown();
+
+        if (timer != null)
+            timer.cancel();
+
+
+    }
+
+
+    @Override
+    public Client getPodHttpClient() {
+        return podHttpClient;
+    }
+
+    @Override
+    public void setPodHttpClient(Client podHttpClient) {
+        this.podHttpClient = podHttpClient;
+    }
+
+    @Override
+    public Client getAgentHttpClient() {
+        return agentHttpClient;
+    }
+
+    @Override
+    public void setAgentHttpClient(Client agentHttpClient) {
+        this.agentHttpClient = agentHttpClient;
+    }
+
+    @Override
+    public SymphonyApis getSymphonyApis() {
+        return symphonyApis;
+    }
+
+
+    @Override
+    public SymphonyClientConfig getConfig() {
+        return config;
+    }
+
+    @Override
+    public void setConfig(SymphonyClientConfig config) {
+        this.config = config;
+    }
+
+    @Override
+    public PresenceService getPresenceService() {
+        return presenceService;
+    }
+
+    /**
+     * Added to support transition to SymphonyClientConfig init.  Will be removed in next major version.
+     *
+     * @param agentUrl  Agent URL
+     * @param podUrl    Pod URL
+     * @param userEmail Bot user email
+     */
+    private void updateConfig(String agentUrl, String podUrl, String userEmail) {
+
+        if (config == null) {
+            config = new SymphonyClientConfig(false);
+        }
+
+        config.set(SymphonyClientConfigID.AGENT_URL, agentUrl);
+        config.set(SymphonyClientConfigID.POD_URL, podUrl);
+        config.set(SymphonyClientConfigID.USER_EMAIL, userEmail);
+
+
+    }
+
+    /**
+     * Added to support transition to SymphonyClientConfig init.  Will be removed in next major version.
+     *
+     * @param config SymphonyClientConfig
+     */
+    private void updateConfig(SymphonyClientConfig config) {
+
+        agentUrl = config.get(SymphonyClientConfigID.AGENT_URL);
+        podUrl = config.get(SymphonyClientConfigID.POD_URL);
+
+    }
+
+
+    private void registerHealthMBean() {
+        logger.info("Exposing SymAgentHealthCheck as JMX MBean...");
+        ClientCheck clientCheck = new ClientCheck(this);
+        MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+        String mBeanName = "org.symphonyoss.client:type=ClientCheckMBean";
+        try {
+            ObjectName mBean = new ObjectName(mBeanName);
+            mbs.registerMBean(clientCheck, mBean);
+            logger.info("Registered JMX Mbean: "+mbs.getMBeanInfo(mBean).getClassName());
+        } catch (ReflectionException e) {
+            logger.error("Cannot register JMX Mbean: "+mBeanName,e);
+        } catch (InstanceNotFoundException e) {
+            logger.error("Cannot register JMX Mbean: "+mBeanName,e);
+        } catch (IntrospectionException e) {
+            logger.error("Cannot register JMX Mbean: "+mBeanName,e);
+        } catch (MBeanRegistrationException e) {
+            logger.error("Cannot register JMX Mbean: "+mBeanName,e);
+        } catch (MalformedObjectNameException e) {
+            logger.error("Cannot register JMX Mbean: "+mBeanName,e);
+        } catch (InstanceAlreadyExistsException e) {
+            logger.error("Cannot register JMX Mbean: "+mBeanName,e);
+        } catch (NotCompliantMBeanException e) {
+            logger.error("Cannot register JMX Mbean: "+mBeanName,e);
+        }
     }
 
 }

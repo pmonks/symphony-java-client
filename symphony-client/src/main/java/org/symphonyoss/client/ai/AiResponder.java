@@ -34,8 +34,8 @@ import org.symphonyoss.client.common.MLTypes;
 import org.symphonyoss.client.exceptions.MessagesException;
 import org.symphonyoss.client.util.MlMessageParser;
 import org.symphonyoss.symphony.clients.model.SymMessage;
+import org.symphonyoss.symphony.clients.model.SymStream;
 import org.symphonyoss.symphony.clients.model.SymUser;
-import org.symphonyoss.symphony.pod.model.Stream;
 
 import java.util.ArrayList;
 import java.util.Set;
@@ -54,16 +54,16 @@ public class AiResponder {
         this.symClient = symClient;
     }
 
+
     /**
      * Sends a message to a user
      *
      * @param message   the message received from the user
-     * @param type      the type of message to send
      * @param userID    the id of the user
      * @param symClient the org.org.symphonyoss.ai's sym client
      */
 
-    public void sendMessage(String message, SymMessage.Format type, Long userID, SymphonyClient symClient) {
+    public void sendMessage(String message, Long userID, SymphonyClient symClient) {
 
         SymUser symUser = new SymUser();
         symUser.setId(userID);
@@ -71,7 +71,7 @@ public class AiResponder {
 
         try {
 
-            sendMessage(message, type, symClient.getStreamsClient().getStream(symUser), symClient);
+            sendMessage(message, symClient.getStreamsClient().getStream(symUser), symClient);
 
         } catch (Exception e) {
             logger.error("Error sending message", e);
@@ -84,18 +84,16 @@ public class AiResponder {
      * Sends a message to a user
      *
      * @param message   the message received from the user
-     * @param type      the type of message to send
      * @param stream    the message stream
      * @param symClient the org.org.symphonyoss.ai's sym client
      */
 
-    public void sendMessage(String message, SymMessage.Format type, Stream stream, SymphonyClient symClient) {
+    public void sendMessage(String message, SymStream stream, SymphonyClient symClient) {
 
         SymMessage userMessage = new SymMessage();
-        userMessage.setFormat(type);
-        userMessage.setMessage(message);
+        userMessage.setMessageText(message);
 
-        System.out.println("Sending message ..." + message);
+        logger.debug("Sending message ..." + message);
 
         try {
 
@@ -109,6 +107,30 @@ public class AiResponder {
 
     }
 
+    /**
+     * Sends a message to a user
+     *
+     * @param message   the message received from the user
+     * @param stream    the message stream
+     * @param symClient the org.org.symphonyoss.ai's sym client
+     */
+
+    public void sendMessage(SymMessage message, SymStream stream, SymphonyClient symClient) {
+
+
+        logger.debug("Sending message ..." + message.getMessageText());
+
+        try {
+
+            symClient.getMessagesClient().sendMessage(stream, message);
+
+        } catch (MessagesException e) {
+            logger.error("API exception with POD while sending a message", e);
+        } catch (Exception e) {
+            logger.error("Unknown Exception while sending a message", e);
+        }
+
+    }
 
     /**
      * Respond to the user, based on the values and ids given in the set of responses
@@ -125,7 +147,7 @@ public class AiResponder {
                 for (AiResponse response : list.getAiResponseSet()) {
 
                     for (SymUser symUser : response.getSymUsers()) {
-                        sendMessage(response.getMessage(), response.getType(), symUser.getId(), symClient);
+                        sendMessage(response.getMessage(), symUser.getId(), symClient);
                     }
 
                 }
@@ -147,9 +169,9 @@ public class AiResponder {
             if (list != null)
                 for (AiResponse response : list.getAiResponseSet()) {
 
-                    Stream stream = new Stream();
-                    stream.setId(streamId);
-                    sendMessage(response.getMessage(), response.getType(), stream, symClient);
+                    SymStream stream = new SymStream();
+                    stream.setStreamId(streamId);
+                    sendMessage(response.getMessage(), stream, symClient);
 
 
                 }
@@ -166,10 +188,10 @@ public class AiResponder {
 
     public void sendSuggestionMessage(AiLastCommand suggestion, SymMessage message) {
 
-        sendMessage(MLTypes.START_ML + AiConstants.SUGGEST
+        sendMessage(AiConstants.SUGGEST
                         + MLTypes.START_BOLD + suggestion.getMlMessageParser().getText()
-                        + MLTypes.END_BOLD + AiConstants.USE_SUGGESTION + MLTypes.END_ML,
-                SymMessage.Format.MESSAGEML, message.getFromUserId(), symClient);
+                        + MLTypes.END_BOLD + AiConstants.USE_SUGGESTION
+                , message.getFromUserId(), symClient);
 
     }
 
@@ -183,11 +205,8 @@ public class AiResponder {
 
     public void sendUsage(SymMessage message, MlMessageParser mlMessageParser, ArrayList<AiCommand> activeCommands) {
 
-        SymMessage aMessage = new SymMessage();
-        aMessage.setFormat(SymMessage.Format.MESSAGEML);
 
         StringBuilder usage = new StringBuilder();
-        usage.append(MLTypes.START_ML);
         usage.append(mlMessageParser.getText());
         usage.append(AiConstants.NOT_INTERPRETABLE);
         usage.append(MLTypes.BREAK);
@@ -205,9 +224,8 @@ public class AiResponder {
 
         }
 
-        usage.append(MLTypes.END_ML);
 
-        sendMessage(usage.toString(), SymMessage.Format.MESSAGEML, message.getFromUserId(), symClient);
+        sendMessage(usage.toString(), message.getFromUserId(), symClient);
 
     }
 
@@ -221,7 +239,7 @@ public class AiResponder {
     public void sendNoPermission(SymMessage message) {
 
         Messenger.sendMessage(AiConstants.NO_PERMISSION,
-                SymMessage.Format.TEXT, message, symClient);
+                message, symClient);
 
     }
 

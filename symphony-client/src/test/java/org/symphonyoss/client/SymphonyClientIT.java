@@ -34,7 +34,6 @@ import org.symphonyoss.client.services.ChatListener;
 import org.symphonyoss.client.services.ChatServiceListener;
 import org.symphonyoss.client.services.RoomEventListener;
 import org.symphonyoss.symphony.clients.model.ApiVersion;
-import org.symphonyoss.symphony.clients.model.SymAttachmentInfo;
 import org.symphonyoss.symphony.clients.model.SymMessage;
 import org.symphonyoss.symphony.clients.model.SymUser;
 import org.symphonyoss.symphony.pod.model.Presence;
@@ -43,9 +42,7 @@ import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -85,12 +82,16 @@ public class SymphonyClientIT implements ChatServiceListener, ChatListener, Room
             sjcTestBot = new SjcTestBot();
 
 
+            SymphonyClientConfig symphonyClientConfig = new SymphonyClientConfig();
+            symphonyClientConfig.set(SymphonyClientConfigID.USER_CERT_FILE,System.getProperty("sender.user.cert.file"));
+            symphonyClientConfig.set(SymphonyClientConfigID.USER_CERT_PASSWORD,System.getProperty("sender.user.cert.password"));
+            symphonyClientConfig.set(SymphonyClientConfigID.TRUSTSTORE_FILE,System.getProperty("truststore.file"));
+            symphonyClientConfig.set(SymphonyClientConfigID.TRUSTSTORE_PASSWORD,System.getProperty("truststore.password"));
+            symphonyClientConfig.set(SymphonyClientConfigID.USER_EMAIL, System.getProperty("sender.user.email", "sjc.testclient"));
+
+
             sjcTestClient = SymphonyClientFactory.getClient(
-                    SymphonyClientFactory.TYPE.V4, System.getProperty("sender.user.email", "sjc.testclient"),
-                    System.getProperty("sender.user.cert.file"),
-                    System.getProperty("sender.user.cert.password"),
-                    System.getProperty("truststore.file"),
-                    System.getProperty("truststore.password"));
+                    SymphonyClientFactory.TYPE.V4, symphonyClientConfig);
 
 
         } catch (Exception e) {
@@ -233,7 +234,7 @@ public class SymphonyClientIT implements ChatServiceListener, ChatListener, Room
         SymMessage symMessage = new SymMessage();
         symMessage.setMessageText(ApiVersion.V4, ATTACHMENT_COMMAND_MESSAGE);
 
-        symMessage.setStreamId(sjcTestClient.getStreamsClient().getStreamFromEmail(botEmail).getId());
+        symMessage.setStreamId(sjcTestClient.getStreamsClient().getStreamFromEmail(botEmail).getStreamId());
 
         new File(TMP_FILE).delete();
 

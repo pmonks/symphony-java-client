@@ -23,6 +23,8 @@
 package org.symphonyoss.symphony.clients;
 
 import org.symphonyoss.client.exceptions.MessagesException;
+import org.symphonyoss.client.model.SymAuth;
+import org.symphonyoss.symphony.clients.model.ApiVersion;
 import org.symphonyoss.symphony.clients.model.SymMessage;
 import org.symphonyoss.symphony.clients.model.SymStream;
 import org.symphonyoss.symphony.pod.model.Stream;
@@ -44,6 +46,19 @@ public interface MessagesClient {
      */
     SymMessage sendMessage(Stream stream, SymMessage message) throws MessagesException;
 
+
+    /**
+     * Send message to SymStream with alternate session token (OBO)
+     *
+     *
+     * @param stream  Stream to send message to
+     * @param message Message to send
+     * @param symAuth Alternate authorization containing session token to use.
+     * @return Message sent
+     * @throws MessagesException Exception caused by Symphony API calls
+     */
+    SymMessage sendMessage(SymStream stream, SymMessage message, SymAuth symAuth) throws MessagesException;
+
     /**
      * Send message to Symstream
      * @param stream Stream to send message to
@@ -53,6 +68,8 @@ public interface MessagesClient {
      */
     SymMessage sendMessage(SymStream stream, SymMessage message) throws MessagesException;
 
+
+    List<SymMessage> getMessagesFromStream(SymStream symStream, Long since, Integer offset, Integer maxMessages, ApiVersion apiVersion1) throws MessagesException;
 
     /**
      * Retrieve historical messages from a given stream.  This is NOT a blocking call.
@@ -77,5 +94,6 @@ public interface MessagesClient {
      * @throws MessagesException Exception caused by Symphony API calls
      */
     List<SymMessage> getMessagesFromStream(Stream stream, Long since, Integer offset, Integer maxMessages) throws MessagesException;
+
 
 }

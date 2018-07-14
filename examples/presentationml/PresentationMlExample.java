@@ -92,7 +92,7 @@ public class PresentationMlExample implements ChatListener, ChatServiceListener 
 
         try {
 
-            SymphonyClientConfig symphonyClientConfig = new SymphonyClientConfig();
+            SymphonyClientConfig symphonyClientConfig = new SymphonyClientConfig(true);
 
             //Create an initialized client
             symClient = SymphonyClientFactory.getClient(
@@ -178,12 +178,11 @@ public class PresentationMlExample implements ChatListener, ChatServiceListener 
         if (message == null)
             return;
 
-        logger.debug("TS: {}\nFrom ID: {}\nSymMessage: {}\nSymMessage Type: {}\nSymMessage Format: {}",
+        logger.debug("TS: {}\nFrom ID: {}\nSymMessage: {}\nSymMessage Type: {}",
                 message.getTimestamp(),
                 message.getFromUserId(),
                 message.getMessage(),
-                message.getMessageType(),
-                message.getFormat().toString());
+                message.getMessageType());
 
         Chat chat = symClient.getChatService().getChatByStream(message.getStreamId());
 
@@ -198,7 +197,7 @@ public class PresentationMlExample implements ChatListener, ChatServiceListener 
 
         chat.addListener(this);
 
-        logger.debug("New chat session detected on stream {} with {}", chat.getStream().getId(), remoteUsersString(chat.getRemoteUsers()));
+        logger.debug("New chat session detected on stream {} with {}", chat.getStream().getStreamId(), remoteUsersString(chat.getRemoteUsers()));
 
 
     }

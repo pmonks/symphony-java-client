@@ -21,9 +21,7 @@
  * under the License.
  *
  */
-
-package attachment;
-
+package customhttpclient;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,31 +29,27 @@ import org.symphonyoss.client.SymphonyClient;
 import org.symphonyoss.client.SymphonyClientConfig;
 import org.symphonyoss.client.SymphonyClientConfigID;
 import org.symphonyoss.client.SymphonyClientFactory;
-import org.symphonyoss.client.exceptions.AttachmentsException;
+import org.symphonyoss.client.exceptions.AuthenticationException;
 import org.symphonyoss.client.exceptions.MessagesException;
-import org.symphonyoss.client.exceptions.SymException;
+import org.symphonyoss.client.exceptions.UsersClientException;
+import org.symphonyoss.client.impl.CustomHttpClient;
 import org.symphonyoss.client.model.Chat;
 import org.symphonyoss.client.services.ChatListener;
 import org.symphonyoss.client.services.ChatServiceListener;
-import org.symphonyoss.symphony.clients.model.ApiVersion;
-import org.symphonyoss.symphony.clients.model.SymAttachmentInfo;
+import org.symphonyoss.symphony.clients.AuthenticationClient;
+import org.symphonyoss.symphony.clients.model.SymExtensionAppAuth;
 import org.symphonyoss.symphony.clients.model.SymMessage;
 import org.symphonyoss.symphony.clients.model.SymUser;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.util.ArrayList;
+import javax.ws.rs.client.Client;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 
 /**
- * Example of handling attachments.
+ * Simple example of the ChatService.
  * <p>
- * Will store an incoming file(s) to the bot and echo them back to the sender.
+ * It will send a message to a call.home.user and listen/create new Chat sessions.
  * <p>
  * <p>
  * <p>
@@ -68,20 +62,22 @@ import java.util.Set;
  * -Duser.call.home=frank.tarsillo@markit.com
  * -Duser.cert.password=password
  * -Duser.cert.file=bot.user2.p12
+ * -Duser.email=bot.user2@domain.com
  * -Dpod.url=https://(pod host)/pod
  * -Dagent.url=https://(agent server host)/agent
- * -Duser.email=bot.user2@markit.com or bot user email
+ * -Dreceiver.email=bot.user2@markit.com or bot user email
  *
  * @author  Frank Tarsillo
  */
 //NOSONAR
-public class AttachmentExampleV4 implements ChatListener, ChatServiceListener {
+public class CustomHttpClientExample implements ChatListener, ChatServiceListener {
 
 
-    private final Logger logger = LoggerFactory.getLogger(AttachmentExampleV4.class);
+    private final Logger logger = LoggerFactory.getLogger(CustomHttpClientExample.class);
+
     private SymphonyClient symClient;
 
-    public AttachmentExampleV4() {
+    public CustomHttpClientExample() {
 
 
         init();
@@ -91,24 +87,56 @@ public class AttachmentExampleV4 implements ChatListener, ChatServiceListener {
 
     public static void main(String[] args) {
 
-        new AttachmentExampleV4();
+        new CustomHttpClientExample();
 
     }
 
     public void init() {
 
 
-
         try {
 
-            logger.info("Attachment example starting...");
-
-
-            SymphonyClientConfig symphonyClientConfig = new SymphonyClientConfig();
+            SymphonyClientConfig symphonyClientConfig = new SymphonyClientConfig(false);
 
             //Create an initialized client
             symClient = SymphonyClientFactory.getClient(
-                    SymphonyClientFactory.TYPE.V4,symphonyClientConfig);  //truststore password
+                    SymphonyClientFactory.TYPE.V4);
+
+            try {
+
+                //You can also set specific properties on each
+                Client podHttpClient = CustomHttpClient.getClient(
+                        symphonyClientConfig.get(SymphonyClientConfigID.USER_CERT_FILE),
+                        symphonyClientConfig.get(SymphonyClientConfigID.USER_CERT_PASSWORD),
+                        symphonyClientConfig.get(SymphonyClientConfigID.TRUSTSTORE_FILE),
+                        symphonyClientConfig.get(SymphonyClientConfigID.TRUSTSTORE_PASSWORD));
+
+                //You can also set specific properties on each
+                Client agentHttpClient = CustomHttpClient.getClient(
+                        symphonyClientConfig.get(SymphonyClientConfigID.USER_CERT_FILE),
+                        symphonyClientConfig.get(SymphonyClientConfigID.USER_CERT_PASSWORD),
+                        symphonyClientConfig.get(SymphonyClientConfigID.TRUSTSTORE_FILE),
+                        symphonyClientConfig.get(SymphonyClientConfigID.TRUSTSTORE_PASSWORD));
+
+
+
+                //Init the Symphony authorization client, which requires both the key and session URL's.  In most cases,
+                //the same fqdn but different URLs.
+                AuthenticationClient authClient = new AuthenticationClient(
+                        symphonyClientConfig.get(SymphonyClientConfigID.SESSIONAUTH_URL),
+                        symphonyClientConfig.get(SymphonyClientConfigID.KEYAUTH_URL),
+                        podHttpClient);
+
+
+
+                symClient.init(podHttpClient,agentHttpClient, symphonyClientConfig);
+
+            } catch (AuthenticationException e) {
+                logger.error("error", e);
+            } catch (Exception e) {
+                logger.error("General exception thrown", e);
+            }
+
 
 
             //Will notify the bot of new Chat conversations.
@@ -116,8 +144,9 @@ public class AttachmentExampleV4 implements ChatListener, ChatServiceListener {
 
             //A message to send when the BOT comes online.
             SymMessage aMessage = new SymMessage();
-            aMessage.setFormat(SymMessage.Format.TEXT);
-            aMessage.setMessageText(ApiVersion.V4,"Hello master, I'm alive again....");
+
+            //V4 will wrap the text in a PresentationMl div.
+            aMessage.setMessageText("Hello master, I'm alive again....");
 
 
             //Creates a Chat session with that will receive the online message.
@@ -127,7 +156,7 @@ public class AttachmentExampleV4 implements ChatListener, ChatServiceListener {
             remoteUsers.add(symClient.getUsersClient().getUserFromEmail(symphonyClientConfig.get(SymphonyClientConfigID.RECEIVER_EMAIL)));
             chat.setRemoteUsers(remoteUsers);
             chat.addListener(this);
-            chat.setStream(symClient.getStreamsClient().getStream(remoteUsers));
+
 
             //Add the chat to the chat service, in case the "master" continues the conversation.
             symClient.getChatService().addChat(chat);
@@ -137,10 +166,16 @@ public class AttachmentExampleV4 implements ChatListener, ChatServiceListener {
             symClient.getMessageService().sendMessage(chat, aMessage);
 
 
-        } catch (SymException e) {
-            logger.error("Something went bad...",e);
-        }
+            symClient.shutdown();
 
+            logger.info("Finished");
+
+
+
+
+        } catch (MessagesException | UsersClientException  e) {
+            logger.error("error", e);
+        }
 
     }
 
@@ -158,55 +193,10 @@ public class AttachmentExampleV4 implements ChatListener, ChatServiceListener {
                 message.getMessage(),
                 message.getMessageType());
 
+        Chat chat = symClient.getChatService().getChatByStream(message.getStreamId());
 
-        //Do we have any attachments in the incoming message
-        if (message.getAttachments() != null) {
-
-            List<SymAttachmentInfo> attachmentInfos = message.getAttachments();
-            File outFile = null;
-            //Check for multiple files
-            for (SymAttachmentInfo symAttachmentInfo : attachmentInfos) {
-
-
-
-                try {
-
-                    outFile = new File(symAttachmentInfo.getName());
-                    OutputStream out = new FileOutputStream(outFile);
-                    out.write(symClient.getAttachmentsClient().getAttachmentData(symAttachmentInfo, message));
-
-                    logger.info("Received file {} with ID: {}", symAttachmentInfo.getName(), symAttachmentInfo.getId());
-
-                    out.close();
-
-                } catch (IOException e) {
-
-                    logger.error("Failed to process file..", e);
-                } catch (AttachmentsException e) {
-                    logger.error("Failed to send attachment..", e);
-                }
-
-            }
-
-
-            //Lets construct the reply.
-            SymMessage symMessage = new SymMessage();
-            symMessage.setMessageText(ApiVersion.V4,"Echo the files you sent....");
-            symMessage.setStreamId(message.getStreamId());
-            symMessage.setAttachment(outFile);
-
-
-            //Send the message back..
-            Chat chat = symClient.getChatService().getChatByStream(message.getStreamId());
-
-            try {
-                if (chat != null)
-                    symClient.getMessageService().sendMessage(chat, symMessage);
-            }catch (MessagesException e){
-                logger.error("Could not send echo reply to user",e);
-            }
-
-        }
+        if(chat!=null)
+            logger.debug("New message is related to chat with users: {}", remoteUsersString(chat.getRemoteUsers()));
 
 
 
@@ -218,12 +208,25 @@ public class AttachmentExampleV4 implements ChatListener, ChatServiceListener {
 
         chat.addListener(this);
 
-        logger.debug("New chat session detected on stream {} with {}", chat.getStream().getId(), chat.getRemoteUsers());
+        logger.debug("New chat session detected on stream {} with {}", chat.getStream().getStreamId(), remoteUsersString(chat.getRemoteUsers()));
+
+
     }
 
     @Override
     public void onRemovedChat(Chat chat) {
 
+    }
+
+    private  String remoteUsersString(Set<SymUser> symUsers){
+
+        String output = "";
+        for(SymUser symUser: symUsers){
+            output += "[" + symUser.getId() + ":" + symUser.getDisplayName() + "] ";
+
+        }
+
+        return output;
     }
 
 }
